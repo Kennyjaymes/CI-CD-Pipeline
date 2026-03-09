@@ -5,4 +5,3 @@ module "eks" {
   subnets         = [aws_subnet.public.id]
   vpc_id          = aws_vpc.main.id
 }
-}
