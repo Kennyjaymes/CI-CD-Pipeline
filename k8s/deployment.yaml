@@ -1,19 +1,19 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: cicd-app
+  name: my-app
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: cicd-app
+      app: my-app
   template:
     metadata:
       labels:
-        app: cicd-app
+        app: my-app
     spec:
       containers:
-      - name: app
-        image: IMAGE_URI
-        ports:
-        - containerPort: 80
+        - name: my-app
+          image: IMAGE_PLACEHOLDER
+          ports:
+            - containerPort: 80

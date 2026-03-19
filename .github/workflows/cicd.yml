@@ -1,0 +1,76 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    # AWS AUTH
+    - name: Configure AWS
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ AKIAZW6BMZJMRNE3DMQ2 }}
+        aws-secret-access-key: ${{ 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}}
+        aws-region: us-east-1
+
+    # SLACK START
+    - run: curl -X POST -H 'Content-type: application/json' \
+        --data '{"text":"🚀 Pipeline started"}' \
+        ${{ secrets.SLACK_WEBHOOK_URL }}
+
+    # TERRAFORM
+    - name: Terraform
+      run: |
+        cd terraform
+        terraform init
+        terraform apply -auto-approve
+
+    # EXPORT OUTPUTS
+    - name: Get Outputs
+      run: |
+        cd terraform
+        echo "ECR_URL=$(terraform output -raw ecr_url)" >> $GITHUB_ENV
+        echo "EC2_IP=$(terraform output -raw ec2_ip)" >> $GITHUB_ENV
+
+    # BUILD + PUSH
+    - run: docker build -t app .
+
+    - run: |
+        aws ecr get-login-password \
+        | docker login --username AWS --password-stdin $ECR_URL
+
+    - run: docker tag app:latest $ECR_URL:latest
+    - run: docker push $ECR_URL:latest
+
+    # EKS DEPLOY
+    - run: aws eks update-kubeconfig --name my-eks-cluster
+
+    - run: |
+        sed -i "s|IMAGE_PLACEHOLDER|$ECR_URL:latest|g" k8s/deployment.yaml
+        kubectl apply -f k8s/deployment.yaml
+
+    # EC2 DEPLOY
+    - name: SSH deploy
+      run: |
+        echo "${{ secrets.EC2_SSH_KEY }}" > key.pem
+        chmod 400 key.pem
+        ssh -o StrictHostKeyChecking=no -i key.pem ec2-user@$EC2_IP \
+        "export IMAGE=$ECR_URL:latest && bash -s" < scripts/deploy-ec2.sh
+
+    # SUCCESS
+    - if: success()
+      run: curl -X POST -H 'Content-type: application/json' \
+        --data '{"text":"✅ SUCCESS"}' \
+        ${{ secrets.SLACK_WEBHOOK_URL }}
+
+    # FAILURE
+    - if: failure()
+      run: curl -X POST -H 'Content-type: application/json' \
+        --data '{"text":"❌ FAILED"}' \
+        ${{ secrets.SLACK_WEBHOOK_URL }}
